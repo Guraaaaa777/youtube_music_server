@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YouTube Music Server</title>
+<style>
+  :root {
+    --bg: #12121a;
+    --panel: #1c1c27;
+    --panel-2: #23232f;
+    --line: #32323f;
+    --text: #ececf2;
+    --muted: #9a9aae;
+    --accent: #ff4b5c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 16px 40px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, "Segoe UI", "Yu Gothic UI", sans-serif;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  form { display: flex; gap: 8px; }
+  input[type=text] {
+    flex: 1; min-width: 0;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 11px 13px;
+    font-size: 14px;
+  }
+  input[type=text]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  button {
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: #2e2e3c; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:hover:not(:disabled) { background: #ff6272; }
+  .now { display: flex; gap: 14px; align-items: center; }
+  .now img { width: 96px; height: 54px; object-fit: cover; border-radius: 8px; background: var(--panel-2); }
+  .now .meta { min-width: 0; }
+  .now .title { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .now .by { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .bar { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-variant-numeric: tabular-nums; }
+  .bar span { color: var(--muted); font-size: 12px; width: 44px; text-align: center; }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  .controls { display: flex; gap: 8px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
+  .vol { display: flex; align-items: center; gap: 8px; margin-left: auto; min-width: 150px; }
+  .vol input { width: 110px; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 10px; border-radius: 10px; cursor: pointer;
+  }
+  li:hover { background: var(--panel-2); }
+  li.active { background: rgba(255, 75, 92, .14); }
+  li .idx { color: var(--muted); font-size: 12px; width: 22px; text-align: right; }
+  li .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+  li .d { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  li .x { border: none; background: none; color: var(--muted); padding: 2px 6px; font-size: 16px; }
+  li .x:hover { color: var(--accent); background: none; }
+  .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .head h2 { font-size: 14px; margin: 0; color: var(--muted); font-weight: 600; }
+  .empty { color: var(--muted); font-size: 13px; padding: 10px; }
+  #msg { font-size: 13px; margin-top: 10px; min-height: 18px; color: var(--accent); }
+  .badge { font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>YouTube Music Server</h1>
+  <p class="sub">URL を渡すとこのサーバーのスピーカーで音声だけ再生します。</p>
+
+  <div class="panel">
+    <form id="addForm">
+      <input id="url" type="text" placeholder="YouTube の URL / 動画ID / 検索語" autocomplete="off" required>
+      <button class="primary" type="submit" id="playBtn">再生</button>
+      <button type="button" id="queueBtn">キューに追加</button>
+    </form>
+    <div id="msg"></div>
+  </div>
+
+  <div class="panel">
+    <div class="now">
+      <img id="thumb" alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==">
+      <div class="meta">
+        <div class="title" id="title">停止中</div>
+        <div class="by" id="by">キューは空です</div>
+      </div>
+    </div>
+
+    <div class="bar">
+      <span id="pos">0:00</span>
+      <input id="seek" type="range" min="0" max="1000" value="0" step="1" disabled>
+      <span id="dur">0:00</span>
+    </div>
+
+    <div class="controls">
+      <button id="prev" title="前の曲">⏮</button>
+      <button id="toggle" class="primary" title="再生 / 一時停止">▶</button>
+      <button id="next" title="次の曲">⏭</button>
+      <button id="stop" title="停止">⏹</button>
+      <button id="repeat" title="リピート">🔁 オフ</button>
+      <div class="vol">
+        <span class="badge">🔊</span>
+        <input id="vol" type="range" min="0" max="100" value="80">
+        <span class="badge" id="volVal">80</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="head">
+      <h2>キュー <span id="count" class="badge"></span></h2>
+      <button id="clear">すべて削除</button>
+    </div>
+    <ul id="queue"></ul>
+    <div class="empty" id="queueEmpty">まだ何も入っていません。</div>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let seeking = false, volDragging = false, lastStatus = null;
+
+const fmt = (s) => {
+  if (s === null || s === undefined || isNaN(s)) return "0:00";
+  s = Math.max(0, Math.floor(s));
+  const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = s % 60;
+  const mm = h ? String(m).padStart(2, "0") : m;
+  return (h ? h + ":" : "") + mm + ":" + String(sec).padStart(2, "0");
+};
+
+const msg = (text, isError = true) => {
+  $("msg").textContent = text || "";
+  $("msg").style.color = isError ? "var(--accent)" : "var(--muted)";
+};
+
+async function api(path, options = {}) {
+  const res = await fetch("/api" + path, {
+    headers: { "Content-Type": "application/json" },
+    ...options,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || res.statusText);
+  render(data);
+  return data;
+}
+
+const post = (path, body) =>
+  api(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
+
+function render(s) {
+  if (!s || !s.state) return;
+  lastStatus = s;
+  const cur = s.current;
+  const dur = cur && cur.duration ? cur.duration : 0;
+
+  $("title").textContent = cur ? cur.title : "停止中";
+  $("by").textContent = cur ? (cur.uploader || "") : "キューは空です";
+  if (cur && cur.thumbnail) $("thumb").src = cur.thumbnail;
+
+  $("dur").textContent = fmt(dur);
+  $("seek").disabled = !cur || !dur;
+  if (!seeking) {
+    $("pos").textContent = fmt(s.position);
+    $("seek").value = dur ? Math.min(1000, (s.position / dur) * 1000) : 0;
+  }
+
+  $("toggle").textContent = s.state === "playing" ? "⏸" : "▶";
+  $("toggle").disabled = !cur;
+  $("prev").disabled = $("next").disabled = s.queue.length < 2;
+  $("stop").disabled = s.state === "idle";
+
+  const labels = { off: "🔁 オフ", all: "🔁 全曲", one: "🔂 1曲" };
+  $("repeat").textContent = labels[s.repeat];
+
+  if (!volDragging) { $("vol").value = s.volume; $("volVal").textContent = s.volume; }
+
+  $("count").textContent = s.queue.length ? "(" + s.queue.length + ")" : "";
+  $("queueEmpty").style.display = s.queue.length ? "none" : "block";
+
+  const ul = $("queue");
+  ul.innerHTML = "";
+  s.queue.forEach((t, i) => {
+    const li = document.createElement("li");
+    if (i === s.index) li.className = "active";
+    li.onclick = () => post("/queue/" + i + "/play").catch((e) => msg(e.message));
+
+    const idx = document.createElement("span");
+    idx.className = "idx";
+    idx.textContent = i === s.index && s.state === "playing" ? "▶" : i + 1;
+
+    const title = document.createElement("span");
+    title.className = "t";
+    title.textContent = t.title;
+
+    const d = document.createElement("span");
+    d.className = "d";
+    d.textContent = fmt(t.duration);
+
+    const x = document.createElement("button");
+    x.className = "x";
+    x.textContent = "×";
+    x.title = "キューから削除";
+    x.onclick = (ev) => {
+      ev.stopPropagation();
+      api("/queue/" + i, { method: "DELETE" }).catch((e) => msg(e.message));
+    };
+
+    li.append(idx, title, d, x);
+    ul.appendChild(li);
+  });
+
+  if (s.error) msg(s.error);
+}
+
+async function submit(playNow) {
+  const url = $("url").value.trim();
+  if (!url) return;
+  const buttons = [$("playBtn"), $("queueBtn")];
+  buttons.forEach((b) => (b.disabled = true));
+  msg("読み込み中…", false);
+  try {
+    const data = await post("/add", { url, play_now: playNow });
+    const added = data.added || [];
+    msg(added.length > 1 ? added.length + " 曲を追加しました" : "追加: " + (added[0] || {}).title, false);
+    $("url").value = "";
+  } catch (e) {
+    msg(e.message);
+  } finally {
+    buttons.forEach((b) => (b.disabled = false));
+  }
+}
+
+$("addForm").onsubmit = (e) => { e.preventDefault(); submit(true); };
+$("queueBtn").onclick = () => submit(false);
+$("toggle").onclick = () => post("/toggle").catch((e) => msg(e.message));
+$("prev").onclick = () => post("/prev").catch((e) => msg(e.message));
+$("next").onclick = () => post("/next").catch((e) => msg(e.message));
+$("stop").onclick = () => post("/stop").catch((e) => msg(e.message));
+$("clear").onclick = () => api("/queue", { method: "DELETE" }).catch((e) => msg(e.message));
+
+$("repeat").onclick = () => {
+  const order = { off: "all", all: "one", one: "off" };
+  post("/repeat", { mode: order[lastStatus ? lastStatus.repeat : "off"] }).catch((e) => msg(e.message));
+};
+
+$("seek").oninput = () => {
+  seeking = true;
+  const dur = lastStatus && lastStatus.current ? lastStatus.current.duration || 0 : 0;
+  $("pos").textContent = fmt((($("seek").value / 1000) * dur));
+};
+$("seek").onchange = () => {
+  const dur = lastStatus && lastStatus.current ? lastStatus.current.duration || 0 : 0;
+  post("/seek", { position: ($("seek").value / 1000) * dur })
+    .catch((e) => msg(e.message))
+    .finally(() => (seeking = false));
+};
+
+$("vol").oninput = () => { volDragging = true; $("volVal").textContent = $("vol").value; };
+$("vol").onchange = () => {
+  post("/volume", { volume: Number($("vol").value) })
+    .catch((e) => msg(e.message))
+    .finally(() => (volDragging = false));
+};
+
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" || e.code !== "Space") return;
+  e.preventDefault();
+  post("/toggle").catch((err) => msg(err.message));
+});
+
+const poll = () => api("/status").catch(() => {});
+poll();
+setInterval(poll, 1000);
+</script>
+</body>
+</html>
